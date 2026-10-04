@@ -1,10 +1,18 @@
+# The bgutil tag is pinned on purpose: it is the one sidecar that is not allowed to
+# float (yt-dlp itself is upgraded on every container start). 2.0.1 is the newest
+# release on Docker Hub (verified 2026-10-04; it is the same image as :latest and the
+# node variant the original setup ran). See README "Upgrading" before bumping it.
+
 services:
   # Supplies YouTube PO tokens so yt-dlp can fetch real video/audio formats
   # instead of being restricted to SABR streaming (storyboard images only).
   bgutil-provider:
-    image: brainicism/bgutil-ytdlp-pot-provider
+    image: brainicism/bgutil-ytdlp-pot-provider:2.0.1
     container_name: bgutil-provider
     restart: unless-stopped
+    environment:
+      - TZ=${TZ:-Europe/Budapest}
+    mem_limit: 512m
 
   yt-extract:
     build: .
@@ -13,11 +21,24 @@ services:
     init: true
     depends_on:
       - bgutil-provider
+    # Root on purpose: the library is typically a CIFS/NFS share mounted with uid=0
+    # forced, and only root can write there. If your share allows another uid, set
+    # e.g. "1000:1000" and chown ./data to match (the entrypoint's pip upgrade of
+    # yt-dlp needs a writable site-packages, so it then logs a warning and is skipped).
+    user: "0:0"
     ports:
       - "2000:8000"
+    env_file: .env
     volumes:
       - ./data:/app/data
-      - ${MEDIA_ROOT}:/media
+      - ${MEDIA_ROOT:-/srv/media}:/media
+    # These override env_file: inside the container the paths are fixed, while .env's
+    # MEDIA_ROOT is the host path used for the bind mount above.
     environment:
       - MEDIA_ROOT=/media
       - DATA_DIR=/app/data
+      - POT_PROVIDER_URL=http://bgutil-provider:4416
+      - TZ=${TZ:-Europe/Budapest}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    mem_limit: 1g
