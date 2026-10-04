@@ -157,8 +157,9 @@ class FakeLibraryWriter:
     def delete(self, rel_path: str) -> None:
         self.assert_online()
         p = self.root / rel_path
-        for sib in p.parent.glob(f"{p.stem}*") if p.parent.exists() else []:
-            if sib.is_file():
+        # startswith, not glob: names contain "[video_id]", which glob reads as a character class
+        for sib in list(p.parent.iterdir()) if p.parent.exists() else []:
+            if sib.is_file() and sib.name.startswith(p.stem):
                 sib.unlink(missing_ok=True)
         parent = p.parent
         if parent != self.root and parent.exists() and not any(parent.iterdir()):

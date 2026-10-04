@@ -335,22 +335,32 @@ async def count_by_status() -> dict[str, int]:
 
 async def claim_next() -> dict | None:
     """Atomically take the next due pending video (manual links first, then oldest)
-    and mark it 'downloading'. Returns the joined row, or None."""
+    and mark it 'downloading'. Returns the joined row, or None.
+
+    SELECT then a conditional UPDATE (retry if another worker won the row) rather than
+    UPDATE ... RETURNING: with one shared connection, a RETURNING cursor that is still
+    open makes a concurrent commit by another coroutine fail ("SQL statements in progress")."""
     conn = get_conn()
-    ts = now()
-    cur = await conn.execute(
-        "UPDATE videos SET status = 'downloading', started_at = ? WHERE video_id = ("
-        "  SELECT video_id FROM videos WHERE status = 'pending' "
-        "  AND (next_retry_at IS NULL OR next_retry_at <= ?) "
-        "  ORDER BY force_download DESC, added_at ASC, video_id LIMIT 1) "
-        "RETURNING video_id",
-        (ts, ts),
-    )
-    row = await cur.fetchone()
-    await conn.commit()
-    if row is None:
-        return None
-    return await get_video(row["video_id"])
+    while True:
+        ts = now()
+        cur = await conn.execute(
+            "SELECT video_id FROM videos WHERE status = 'pending' "
+            "AND (next_retry_at IS NULL OR next_retry_at <= ?) "
+            "ORDER BY force_download DESC, added_at ASC, video_id LIMIT 1",
+            (ts,),
+        )
+        row = await cur.fetchone()
+        await cur.close()
+        if row is None:
+            return None
+        cur = await conn.execute(
+            "UPDATE videos SET status = 'downloading', started_at = ? "
+            "WHERE video_id = ? AND status = 'pending'",
+            (ts, row["video_id"]),
+        )
+        await conn.commit()
+        if cur.rowcount > 0:
+            return await get_video(row["video_id"])
 
 
 async def update_video(video_id: str, fields: dict) -> None:

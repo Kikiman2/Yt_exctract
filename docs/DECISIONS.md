@@ -17,3 +17,6 @@ Each entry: what, why, how to revert. Newest last.
 7. **Retry policy:** failed downloads retry after `retry_failed_after_hours` (default 6) doubling per attempt,
    max `max_attempts` (default 5); then they stay failed until retried by hand.
 8. **Bot-check failures do not pause the pipeline**; they fail the video with a hint to refresh cookies.
+9. **`db.claim_next` no longer uses `UPDATE ... RETURNING`** (agent C). With the single shared aiosqlite connection,
+   an open RETURNING cursor made a concurrent commit from another worker fail with "SQL statements in progress".
+   It is now SELECT + conditional UPDATE (retries if another worker took the row). Same behaviour and signature.
