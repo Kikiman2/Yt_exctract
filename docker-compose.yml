@@ -1,0 +1,23 @@
+services:
+  # Supplies YouTube PO tokens so yt-dlp can fetch real video/audio formats
+  # instead of being restricted to SABR streaming (storyboard images only).
+  bgutil-provider:
+    image: brainicism/bgutil-ytdlp-pot-provider
+    container_name: bgutil-provider
+    restart: unless-stopped
+
+  yt-extract:
+    build: .
+    container_name: yt-extract
+    restart: unless-stopped
+    init: true
+    depends_on:
+      - bgutil-provider
+    ports:
+      - "2000:8000"
+    volumes:
+      - ./data:/app/data
+      - ${MEDIA_ROOT}:/media
+    environment:
+      - MEDIA_ROOT=/media
+      - DATA_DIR=/app/data
