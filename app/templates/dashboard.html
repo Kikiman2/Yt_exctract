@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Dashboard</h1>
+  <div class="actions">
+    <button type="button" id="pause-btn">Pause downloads</button>
+    <button type="button" id="refresh-btn">Refresh all sources</button>
+    <button type="button" id="missing-btn" title="Requeue downloaded videos whose file is gone">Check for missing downloads</button>
+  </div>
+</div>
+
+<section class="panel" aria-labelledby="add-h">
+  <h2 id="add-h">Add video by link</h2>
+  <form id="add-form" class="inline-form">
+    <label class="grow"><span class="sr-only">YouTube video link</span>
+      <input type="url" id="add-url" class="grow" placeholder="https://www.youtube.com/watch?v=..." required>
+    </label>
+    <button type="submit" class="btn-primary">Download</button>
+  </form>
+  <p class="help">Manual links ignore the shorts/live filters and never auto-delete.</p>
+</section>
+
+<section class="counters" id="counters" aria-label="Queue counts"></section>
+
+<section class="panel" aria-labelledby="videos-h">
+  <div class="panel-header">
+    <h2 id="videos-h">Videos <span class="count" id="video-count"></span></h2>
+    <label class="inline-label">Status
+      <select id="status-filter">
+        <option value="">All</option>
+        <option value="pending">Pending</option>
+        <option value="downloading">Downloading</option>
+        <option value="downloaded">Downloaded</option>
+        <option value="skipped">Skipped</option>
+        <option value="failed">Failed</option>
+        <option value="deleted">Deleted</option>
+      </select>
+    </label>
+  </div>
+  <div class="table-wrap" id="videos-box"><p class="muted">Loading…</p></div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="/static/dashboard.js"></script>{% endblock %}

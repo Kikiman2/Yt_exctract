@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Health{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Health</h1>
+  <div class="actions">
+    <span class="muted small" id="checked-at"></span>
+    <button type="button" id="check-btn" class="btn-primary">Check now</button>
+  </div>
+</div>
+<section class="cards" id="components" aria-label="Components"><p class="muted">Loading…</p></section>
+
+<section class="panel" aria-labelledby="ev-h">
+  <div class="panel-header">
+    <h2 id="ev-h">Events</h2>
+    <label class="inline-label">Show
+      <select id="ev-limit">
+        <option value="50">Last 50</option>
+        <option value="200">Last 200</option>
+        <option value="500">Last 500</option>
+      </select>
+    </label>
+  </div>
+  <ol class="timeline" id="events"><li class="muted">Loading…</li></ol>
+</section>
+{% endblock %}
+{% block scripts %}<script src="/static/health.js"></script>{% endblock %}

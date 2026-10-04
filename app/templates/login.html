@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Log in{% endblock %}
+{% block content %}
+<section class="panel login-panel">
+  <div class="login-hero">
+    <img src="/static/logo.svg" alt="" width="76" height="76">
+    <p class="login-word">yt<b>_extract</b></p>
+    <p class="login-tag">Your subscriptions, saved to your library.</p>
+  </div>
+  <h1 class="sr-only">Log in</h1>
+  {% if error %}<p class="alert alert-error" role="alert">{{ error }}</p>{% endif %}
+  <form method="post" action="/login" class="stacked-form">
+    <input type="hidden" name="next" value="{{ next or '' }}">
+    <label>Username
+      <input type="text" name="username" autocomplete="username" required autofocus>
+    </label>
+    <label>Password
+      <input type="password" name="password" autocomplete="current-password" required>
+    </label>
+    <button type="submit" class="btn-primary">Log in</button>
+  </form>
+</section>
+{% endblock %}

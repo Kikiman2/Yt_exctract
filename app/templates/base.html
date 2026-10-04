@@ -1,0 +1,35 @@
+{# Shared shell. Pages get only `request` and `active`; every bit of data is fetched from /api by the page's JS. #}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>{% block title %}yt_extract{% endblock %} · yt_extract</title>
+  <link rel="icon" href="/static/logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="page-{{ active }}">
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="topbar">
+    <a class="brand" href="/"><img src="/static/logo.svg" alt="" width="30" height="30"><span>yt<b>_extract</b></span></a>
+    {% if active != "login" %}
+    <nav aria-label="Main">
+      {% for href, key, label in [("/", "dashboard", "Dashboard"), ("/sources", "sources", "Sources"), ("/settings", "settings", "Settings"), ("/health", "health", "Health")] %}
+      <a href="{{ href }}"{% if active == key %} aria-current="page"{% endif %}>{{ label }}</a>
+      {% endfor %}
+    </nav>
+    <form method="post" action="/logout" class="logout">
+      <button type="submit" class="btn-ghost">Log out</button>
+    </form>
+    {% endif %}
+  </header>
+  {% if active != "login" %}<div id="status-banner" class="alert alert-warn banner" role="status" hidden></div>{% endif %}
+  <main id="main">
+    {% block content %}{% endblock %}
+  </main>
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+  <script src="/static/app.js"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>
