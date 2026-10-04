@@ -253,3 +253,11 @@ async def test_new_feed_videos_flow_through_pipeline(services_ctx, fake_youtube)
     await downloads.process_one(await db.claim_next())
     (v,) = await subscriptions.list_videos(status="downloaded")
     assert v["file_path"].startswith("YouTube/Chan One/")
+
+
+async def test_add_source_garbage_input_is_a_value_error_not_a_youtube_error(services_ctx, fake_youtube):
+    """Typos are the user's mistake (400), not an upstream failure (502); the client is never called."""
+    for bad in ("not a youtube thing", "https://example.com/@x", "https://www.youtube.com/watch?v=abc12345678"):
+        with pytest.raises(ValueError):
+            await subscriptions.add_source(bad)
+    assert not fake_youtube.sources

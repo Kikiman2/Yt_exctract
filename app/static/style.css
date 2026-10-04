@@ -74,7 +74,7 @@ label.grow { display: flex; }
 .stacked-form label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.9rem; color: var(--muted); }
 .checkbox-label, .stacked-form label.checkbox-label { flex-direction: row; align-items: center; gap: 0.5rem; color: var(--text); }
 .help { margin: 0.4rem 0 0.6rem; font-size: 0.8rem; color: var(--muted); }
-.stacked-form .help { margin: -0.4rem 0 0; }
+.stacked-form .help { margin: 0.1rem 0 0.2rem; }
 .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.8rem; }
 .form-actions, .dialog-actions { display: flex; gap: 0.5rem; align-items: center; }
 .dialog-actions { justify-content: flex-end; }

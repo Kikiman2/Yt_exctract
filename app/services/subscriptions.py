@@ -8,6 +8,7 @@ import logging
 import posixpath
 
 from .. import config, db
+from ..domain import urls
 from ..models import SourceRef, VIDEO_STATUSES
 from .context import ctx
 from .downloads import video_json
@@ -53,6 +54,7 @@ async def add_source(url: str) -> dict:
     value = (url or "").strip()
     if not value:
         raise ValueError("Enter a channel or playlist URL or @handle")
+    urls.classify_input(value)  # ValueError (400) for input that can't be a channel/playlist
     ref = await asyncio.to_thread(ctx().youtube.resolve_source, value)
     if not await db.add_subscription(ref.source_id, ref.kind, ref.title, ref.url):
         raise ValueError(f"Already subscribed to {ref.title}")

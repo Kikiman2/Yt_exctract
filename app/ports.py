@@ -35,8 +35,8 @@ class YouTubePort(Protocol):
         ...
 
     def fetch_feed(self, source: SourceRef) -> list[FeedEntry]:
-        """Newest uploads, newest first. Channels use the public RSS feed; playlists
-        use a flat yt-dlp extraction."""
+        """Newest uploads, newest first (about 15). Channels and playlists both use
+        the public RSS feed, so no yt-dlp call (and no bot check) is involved."""
         ...
 
     def download(
