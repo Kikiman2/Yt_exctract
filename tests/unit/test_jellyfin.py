@@ -44,7 +44,7 @@ async def test_touch_debounces_into_one_request(jf):
     assert _updates(route) == [[("/data/YouTube/YouTube/A", "Created"),
                                 ("/data/YouTube/YouTube/B", "Created")]]
     req = route.calls[0].request
-    assert req.headers["X-Emby-Token"] == "secret"
+    assert req.headers["Authorization"] == 'MediaBrowser Token="secret"'
     assert not n.pending
     await n.aclose()
 
@@ -109,7 +109,7 @@ async def test_test_ok(notifier, jf):
         {"Name": "YouTube", "Locations": ["/data/YouTube"]}])
     res = await notifier.test()
     assert res["ok"] is True and "Lenovo" in res["detail"] and "found" in res["detail"]
-    assert jf.calls[0].request.headers["X-Emby-Token"] == "secret"
+    assert jf.calls[0].request.headers["Authorization"] == 'MediaBrowser Token="secret"'
 
 
 async def test_test_bad_key_and_unreachable(notifier, jf):

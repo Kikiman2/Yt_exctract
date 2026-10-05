@@ -91,7 +91,7 @@ No test may touch the network.
 - `library/jellyfin.py: class JellyfinNotifier(url, api_key, library_path, library_name)` implements
   `MediaServerNotifier` with httpx.AsyncClient: `touch()` records a folder; a debounce (default 10 s, `debounce`
   ctor arg so tests use 0) sends `POST /Library/Media/Updated` with `{"Updates":[{"Path": <library_path>/<folder>,
-  "UpdateType":"Created"}]}` and header `X-Emby-Token`; `test()` hits `GET /System/Info` ->
+  "UpdateType":"Created"}]}` and header `Authorization: MediaBrowser Token="<key>"` (newer Jellyfin rejects `X-Emby-Token` with 401); `test()` hits `GET /System/Info` ->
   `{"ok","detail"}`; `create_library()` posts `/Library/VirtualFolders` with `collectionType=homevideos`,
   name, path (idempotent: already exists -> ok). Missing API key -> `{"ok": False, "detail": "JELLYFIN_API_KEY not set"}`,
   `touch()` is then a no-op. Look at MangaLord's `app/library/jellyfin.py` for the tested approach and reuse its style.

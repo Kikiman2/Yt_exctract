@@ -30,7 +30,7 @@ class JellyfinNotifier:
         self._task: asyncio.Task | None = None
         self._client = httpx.AsyncClient(
             base_url=self.url, timeout=15, transport=transport,
-            headers={"X-Emby-Token": api_key} if api_key else {},
+            headers={"Authorization": f"MediaBrowser Token=\"{api_key}\""} if api_key else {},
         )
 
     @property
