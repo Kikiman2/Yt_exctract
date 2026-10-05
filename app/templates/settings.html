@@ -1,44 +1,110 @@
 {% extends "base.html" %}
+{% block title %}Settings{% endblock %}
 {% block content %}
+<div class="page-head"><h1>Settings</h1></div>
+
+<form id="settings-form" class="stacked-form wide" novalidate>
   <section class="panel">
-    <h2>Settings</h2>
-    <form method="post" action="/api/settings" class="stacked-form">
-      <label>
-        Download subfolder (inside the mounted media root)
-        <input type="text" name="download_subfolder" value="{{ settings.download_subfolder }}" required>
+    <h2>Downloads</h2>
+    <div class="form-grid">
+      <label>Library subfolder
+        <input type="text" name="download_subfolder" required>
+        <span class="field-error error-text" data-error-for="download_subfolder" hidden></span>
       </label>
-      <label>
-        Poll interval (minutes)
-        <input type="number" name="poll_interval_minutes" min="1" value="{{ settings.poll_interval_minutes }}" required>
-      </label>
-      <label>
-        Quality
+      <label>Quality
         <select name="quality">
-          <option value="best" {{ "selected" if settings.quality == "best" else "" }}>Best available</option>
-          <option value="1080p" {{ "selected" if settings.quality == "1080p" else "" }}>Cap at 1080p</option>
+          <option value="best">Best</option>
+          <option value="1080p">1080p</option>
+          <option value="720p">720p</option>
         </select>
+        <span class="field-error error-text" data-error-for="quality" hidden></span>
       </label>
-      <label>
-        Auto-delete downloaded videos after (days, 0 = never)
-        <input type="number" name="auto_delete_days" min="0" value="{{ settings.auto_delete_days }}" required>
+      <label>Concurrent downloads
+        <input type="number" name="max_concurrent_downloads" min="1" max="8" step="1">
+        <span class="field-error error-text" data-error-for="max_concurrent_downloads" hidden></span>
       </label>
-      <label>
-        Max simultaneous downloads
-        <input type="number" name="max_concurrent_downloads" min="1" max="5" value="{{ settings.max_concurrent_downloads }}" required>
+      <label>Minimum free disk (GB)
+        <input type="number" name="min_free_gb" min="0" step="1">
+        <span class="field-error error-text" data-error-for="min_free_gb" hidden></span>
       </label>
-      <label class="checkbox-label">
-        <input type="checkbox" name="skip_shorts" value="true" {{ "checked" if settings.skip_shorts == "true" else "" }}>
-        Skip YouTube Shorts (auto-discovered uploads only; manual links always download)
-      </label>
-      <label>
-        Fallback Shorts length threshold (seconds) - only used if YouTube's own Shorts flag is unavailable
-        <input type="number" name="shorts_max_seconds" min="1" value="{{ settings.shorts_max_seconds }}" required>
-      </label>
-      <label class="checkbox-label">
-        <input type="checkbox" name="skip_live" value="true" {{ "checked" if settings.skip_live == "true" else "" }}>
-        Skip live streams that are currently live or upcoming
-      </label>
-      <button type="submit">Save</button>
-    </form>
+    </div>
+    <p class="help">Downloads pause automatically when free space drops below the minimum.</p>
+    <label class="checkbox-label"><input type="checkbox" name="write_nfo"> Write Jellyfin NFO and poster files next to each video</label>
+    <label class="checkbox-label"><input type="checkbox" name="pipeline_paused"> Pause the download queue</label>
   </section>
+
+  <section class="panel">
+    <h2>Discovery</h2>
+    <div class="form-grid">
+      <label>Check sources every (minutes)
+        <input type="number" name="poll_interval_minutes" min="1" step="1">
+        <span class="field-error error-text" data-error-for="poll_interval_minutes" hidden></span>
+      </label>
+      <label>Shorts are at most (seconds)
+        <input type="number" name="shorts_max_seconds" min="1" step="1">
+        <span class="field-error error-text" data-error-for="shorts_max_seconds" hidden></span>
+      </label>
+    </div>
+    <label class="checkbox-label"><input type="checkbox" name="skip_shorts"> Skip shorts</label>
+    <label class="checkbox-label"><input type="checkbox" name="skip_live"> Skip live and upcoming streams</label>
+    <p class="help">Filters apply to auto-discovered uploads only. Links you paste are always downloaded.</p>
+  </section>
+
+  <section class="panel">
+    <h2>Retries and retention</h2>
+    <div class="form-grid">
+      <label>Retry failed after (hours)
+        <input type="number" name="retry_failed_after_hours" min="1" step="1">
+        <span class="field-error error-text" data-error-for="retry_failed_after_hours" hidden></span>
+      </label>
+      <label>Maximum attempts
+        <input type="number" name="max_attempts" min="1" step="1">
+        <span class="field-error error-text" data-error-for="max_attempts" hidden></span>
+      </label>
+      <label>Auto-delete after (days)
+        <input type="number" name="auto_delete_days" min="0" step="1">
+        <span class="field-error error-text" data-error-for="auto_delete_days" hidden></span>
+      </label>
+    </div>
+    <p class="help">Retries back off exponentially from the first value. 0 days = never auto-delete.</p>
+  </section>
+
+  <p class="alert alert-error" id="settings-error" role="alert" hidden></p>
+  <div class="form-actions"><button type="submit" class="btn-primary">Save settings</button></div>
+</form>
+
+<div class="grid-2">
+  <section class="panel" aria-labelledby="ck-h">
+    <h2 id="ck-h">YouTube cookies</h2>
+    <div id="cookies-status" class="muted">Loading…</div>
+    <form id="cookies-form" class="inline-form wrap">
+      <label class="grow"><span class="sr-only">cookies.txt file</span>
+        <input type="file" id="cookies-file" class="grow" accept=".txt,.json,text/plain,application/json" required>
+      </label>
+      <button type="submit">Upload</button>
+      <button type="button" id="cookies-delete" class="btn-danger">Delete</button>
+    </form>
+    <p class="help">Export cookies from a logged-in browser (Netscape cookies.txt or JSON). Needed for age-restricted or bot-checked videos.</p>
+  </section>
+
+  <section class="panel" aria-labelledby="jf-h">
+    <h2 id="jf-h">Jellyfin</h2>
+    <p id="jf-info" class="muted">Loading…</p>
+    <div class="actions">
+      <button type="button" id="jf-test">Test connection</button>
+      <button type="button" id="jf-create">Create library</button>
+    </div>
+    <p id="jf-result" class="result" role="status"></p>
+    <p class="help">The server URL and API key come from the environment (JELLYFIN_URL, JELLYFIN_API_KEY).</p>
+  </section>
+
+  <section class="panel" aria-labelledby="yt-h">
+    <h2 id="yt-h">yt-dlp</h2>
+    <p id="yt-info" class="muted">Loading…</p>
+    <div class="actions"><button type="button" id="yt-upgrade">Upgrade yt-dlp</button></div>
+    <p id="yt-result" class="result" role="status"></p>
+    <p class="help">The upgrade is installed immediately, but a restart of the container is needed before the new version is used.</p>
+  </section>
+</div>
 {% endblock %}
+{% block scripts %}<script src="/static/settings.js"></script>{% endblock %}

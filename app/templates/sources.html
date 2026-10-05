@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Sources{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Sources</h1>
+  <button type="button" id="refresh-all-btn">Refresh all sources</button>
+</div>
+
+<section class="panel" aria-labelledby="add-h">
+  <h2 id="add-h">Add a channel or playlist</h2>
+  <form id="add-form" class="inline-form">
+    <label class="grow"><span class="sr-only">Channel or playlist URL, or @handle</span>
+      <input type="text" id="add-url" class="grow" placeholder="https://www.youtube.com/@name, a playlist URL, or @name" required>
+    </label>
+    <button type="submit" class="btn-primary">Add source</button>
+  </form>
+</section>
+
+<section class="panel" aria-labelledby="list-h">
+  <h2 id="list-h">Subscriptions <span class="count" id="source-count"></span></h2>
+  <div class="table-wrap" id="sources-box"><p class="muted">Loading…</p></div>
+</section>
+
+<dialog id="override-dialog" aria-labelledby="ov-title">
+  <h2 id="ov-title">Overrides</h2>
+  <form id="override-form" class="stacked-form wide">
+    <p class="help" id="ov-help">Leave a field on "global" to follow the Settings page.</p>
+    <label>Quality
+      <select name="quality">
+        <option value="">Use global setting</option>
+        <option value="best">Best</option>
+        <option value="1080p">1080p</option>
+        <option value="720p">720p</option>
+      </select>
+    </label>
+    <label>Skip shorts
+      <select name="skip_shorts">
+        <option value="">Use global setting</option>
+        <option value="true">Yes</option>
+        <option value="false">No</option>
+      </select>
+    </label>
+    <label>Skip live streams
+      <select name="skip_live">
+        <option value="">Use global setting</option>
+        <option value="true">Yes</option>
+        <option value="false">No</option>
+      </select>
+    </label>
+    <label>Retention days
+      <input type="number" name="retention_days" min="0" max="3650" step="1" placeholder="global">
+    </label>
+    <p class="help">Blank = global. 0 = keep forever.</p>
+    <label class="checkbox-label"><input type="checkbox" name="auto_delete_enabled"> Auto-delete old videos from this source</label>
+    <p class="alert alert-error" id="ov-error" role="alert" hidden></p>
+    <div class="dialog-actions">
+      <button type="button" data-close>Cancel</button>
+      <button type="submit" class="btn-primary">Save</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}
+{% block scripts %}<script src="/static/sources.js"></script>{% endblock %}
