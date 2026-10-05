@@ -112,7 +112,9 @@ th { color: var(--muted); font-weight: 600; font-size: 0.8rem; }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 td.title { max-width: 26rem; overflow-wrap: anywhere; }
 td.row-actions { white-space: nowrap; }
-.row-actions { display: flex; gap: 0.35rem; flex-wrap: wrap; }
+td.row-actions > .btn-sm { margin-right: 0.35rem; }
+.row-actions-inner { display: flex; gap: 0.35rem; flex-wrap: wrap; }
+td.progress-cell { min-width: 150px; }
 .error-text { color: var(--danger); font-size: 0.8rem; overflow-wrap: anywhere; }
 .skip-text { color: var(--skipped); font-size: 0.8rem; overflow-wrap: anywhere; }
 .progress { position: relative; height: 0.55rem; background: var(--panel-2); border-radius: 999px; overflow: hidden; min-width: 90px; border: 1px solid var(--border); }

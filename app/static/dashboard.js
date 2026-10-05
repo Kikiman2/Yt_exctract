@@ -100,7 +100,7 @@
         h("td", null, statusCell(v)),
         h("td", { class: "progress-cell" }, progressCell(v)),
         h("td", { class: "hide-sm small muted", title: fullTime(v.added_at), text: relTime(v.added_at) }),
-        h("td", { class: "row-actions" }, actionButtons(v))
+        h("td", { class: "row-actions" }, h("div", { class: "row-actions-inner" }, actionButtons(v)))
       )
     );
     YT.replace(
