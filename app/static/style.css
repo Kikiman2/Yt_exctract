@@ -157,4 +157,12 @@ dialog h2 { margin-top: 0; }
   .inline-form:not(.wrap) { flex-wrap: wrap; }
   .timeline li { grid-template-columns: 1fr; gap: 0; }
   .hide-sm { display: none; }
+  /* Video table becomes stacked rows: title full width, status + progress, then actions. */
+  #videos-box thead { display: none; }
+  #videos-box tr { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.75rem; padding: 0.6rem 0.1rem; border-bottom: 1px solid var(--border); }
+  #videos-box td { padding: 0; border: 0; }
+  #videos-box td.title { flex: 1 1 100%; max-width: none; font-weight: 500; }
+  #videos-box td.progress-cell { flex: 1 1 120px; min-width: 0; }
+  #videos-box td:empty, #videos-box td.row-actions:not(:has(button)) { display: none; }
+  #videos-box td.row-actions { flex: 1 1 100%; white-space: normal; }
 }
