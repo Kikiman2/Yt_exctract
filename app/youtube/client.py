@@ -33,7 +33,9 @@ from ..models import (
 )
 
 FEED_URL = "https://www.youtube.com/feeds/videos.xml?{kind}_id={source_id}"
+FALLBACK_LIMIT = 15
 _CHANNEL_ID = re.compile(r"^UC[\w-]{22}$")
+_VIDEO_ID = re.compile(r"^[\w-]{11}$")
 _BOT_CHECK = re.compile(r"confirm you.{1,8}re not a bot", re.IGNORECASE)
 _ANSI = re.compile(r"\x1b\[[0-9;]*m")
 _VIDEO_EXTS = ("mp4", "mkv", "webm", "mov")
@@ -165,11 +167,40 @@ class YtDlpClient:
             info.get("channel") or info.get("uploader"),
         )
 
+    def list_playlist(self, url: str) -> tuple[str, list[VideoRef]]:
+        opts = {**base_opts(), "extract_flat": True}
+        info = _run_extract(opts, url) or {}
+        refs: list[VideoRef] = []
+        for e in info.get("entries") or []:
+            video_id = (e or {}).get("id")
+            title = e.get("title") if e else None
+            if not video_id or not _VIDEO_ID.match(video_id) or title in (None, "[Private video]", "[Deleted video]"):
+                continue
+            refs.append(VideoRef(video_id, title, e.get("channel_id"), e.get("channel") or e.get("uploader")))
+        return info.get("title") or info.get("id") or url, refs
+
+    def _fetch_listing(self, source: SourceRef) -> list[FeedEntry]:
+        """Latest uploads via yt-dlp; used when YouTube's RSS endpoint answers 404."""
+        if source.kind == "playlist":
+            url = f"https://www.youtube.com/playlist?list={source.source_id}"
+        else:
+            url = f"https://www.youtube.com/channel/{source.source_id}/videos"
+        opts = {**base_opts(), "extract_flat": True, "playlistend": FALLBACK_LIMIT}
+        info = _run_extract(opts, url) or {}
+        return [
+            FeedEntry(e["id"], e["title"])
+            for e in info.get("entries") or []
+            if e and _VIDEO_ID.match(e.get("id") or "")
+            and e.get("title") not in (None, "[Private video]", "[Deleted video]")
+        ]
+
     def fetch_feed(self, source: SourceRef) -> list[FeedEntry]:
         url = FEED_URL.format(kind=source.kind, source_id=source.source_id)
         try:
             text = _fetch_feed_text(url)
-        except YouTubeError:
+        except YouTubeError as exc:
+            if "HTTP 404" in str(exc):
+                return self._fetch_listing(source)
             raise
         except (httpx.HTTPError, OSError) as exc:
             raise YouTubeError(f"Feed request failed: {exc}") from exc

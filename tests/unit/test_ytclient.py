@@ -163,11 +163,25 @@ def test_fetch_feed_garbage_raises(monkeypatch):
         yc.YtDlpClient().fetch_feed(SourceRef("channel", CHANNEL, "T", "u"))
 
 
-def test_fetch_feed_http_error_propagates(monkeypatch):
+def test_fetch_feed_404_falls_back_to_ytdlp(monkeypatch):
     def fail(url):
         raise YouTubeError("Feed request failed: HTTP 404")
+    seen = []
+    def fake_extract(opts, url, **kw):
+        seen.append((url, opts.get("playlistend")))
+        return {"entries": [{"id": "abcdefghijk", "title": "One"}, {"id": "bad", "title": "x"}, None]}
     monkeypatch.setattr(yc, "_fetch_feed_text", fail)
-    with pytest.raises(YouTubeError, match="404"):
+    monkeypatch.setattr(yc, "_extract", fake_extract)
+    entries = yc.YtDlpClient().fetch_feed(SourceRef("channel", CHANNEL, "T", "u"))
+    assert [(e.video_id, e.title) for e in entries] == [("abcdefghijk", "One")]
+    assert seen == [(f"https://www.youtube.com/channel/{CHANNEL}/videos", yc.FALLBACK_LIMIT)]
+
+
+def test_fetch_feed_http_error_propagates(monkeypatch):
+    def fail(url):
+        raise YouTubeError("Feed request failed: HTTP 500")
+    monkeypatch.setattr(yc, "_fetch_feed_text", fail)
+    with pytest.raises(YouTubeError, match="500"):
         yc.YtDlpClient().fetch_feed(SourceRef("channel", CHANNEL, "T", "u"))
 
 
