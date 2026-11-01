@@ -41,4 +41,4 @@ services:
       - TZ=${TZ:-Europe/Budapest}
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    mem_limit: 1g
+    mem_limit: 1536m

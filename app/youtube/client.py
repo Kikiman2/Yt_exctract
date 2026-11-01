@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+import threading
 import sys
 from importlib import metadata
 from pathlib import Path
@@ -34,6 +35,8 @@ from ..models import (
 
 FEED_URL = "https://www.youtube.com/feeds/videos.xml?{kind}_id={source_id}"
 FALLBACK_LIMIT = 15
+# Each yt-dlp extraction spawns a ~220 MB deno process; keep the feed fallback to one at a time.
+_LISTING_LOCK = threading.Lock()
 _CHANNEL_ID = re.compile(r"^UC[\w-]{22}$")
 _VIDEO_ID = re.compile(r"^[\w-]{11}$")
 _BOT_CHECK = re.compile(r"confirm you.{1,8}re not a bot", re.IGNORECASE)
@@ -186,7 +189,8 @@ class YtDlpClient:
         else:
             url = f"https://www.youtube.com/channel/{source.source_id}/videos"
         opts = {**base_opts(), "extract_flat": True, "playlistend": FALLBACK_LIMIT}
-        info = _run_extract(opts, url) or {}
+        with _LISTING_LOCK:
+            info = _run_extract(opts, url) or {}
         return [
             FeedEntry(e["id"], e["title"])
             for e in info.get("entries") or []
