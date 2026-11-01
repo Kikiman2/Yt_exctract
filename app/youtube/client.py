@@ -37,6 +37,7 @@ FEED_URL = "https://www.youtube.com/feeds/videos.xml?{kind}_id={source_id}"
 FALLBACK_LIMIT = 15
 # Each yt-dlp extraction spawns a ~220 MB deno process; keep the feed fallback to one at a time.
 _LISTING_LOCK = threading.Lock()
+_YDL_INIT_LOCK = threading.Lock()
 _CHANNEL_ID = re.compile(r"^UC[\w-]{22}$")
 _VIDEO_ID = re.compile(r"^[\w-]{11}$")
 _BOT_CHECK = re.compile(r"confirm you.{1,8}re not a bot", re.IGNORECASE)
@@ -48,8 +49,15 @@ _PIP_PACKAGES = ["yt-dlp[default]", "bgutil-ytdlp-pot-provider"]
 
 # -- seams (monkeypatched in tests)
 
+def _new_ydl(opts: dict) -> yt_dlp.YoutubeDL:
+    # yt-dlp's plugin loader is not thread-safe: concurrent first constructions race and the
+    # bgutil PO-token plugins log ImportError / "already registered". Construct one at a time.
+    with _YDL_INIT_LOCK:
+        return yt_dlp.YoutubeDL(opts)
+
+
 def _extract(opts: dict, url: str, *, download: bool = False, process: bool = True) -> dict | None:
-    with yt_dlp.YoutubeDL(opts) as ydl:
+    with _new_ydl(opts) as ydl:
         return ydl.extract_info(url, download=download, process=process)
 
 
