@@ -10,7 +10,6 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from starlette.middleware.sessions import SessionMiddleware
 
 from . import auth, db
 from .routes import api, pages
@@ -55,7 +54,8 @@ def create_app() -> FastAPI:
     # Innermost first: CSRF check, static no-cache, then the session outermost.
     app.middleware("http")(auth.csrf_middleware)
     app.middleware("http")(no_cache_static)
-    app.add_middleware(SessionMiddleware, **auth.session_middleware_kwargs())
+    app.add_middleware(auth.AutoSecureSessionMiddleware, **auth.session_middleware_kwargs())
+    app.add_middleware(auth.HttpsAwareMiddleware)  # outermost: runs before the session cookie is set
 
     api.install_error_handlers(app)
     app.add_exception_handler(auth.NotAuthenticated, auth.not_authenticated_handler)

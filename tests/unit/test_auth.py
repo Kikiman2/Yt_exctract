@@ -48,6 +48,28 @@ def test_secure_cookie_flag(monkeypatch, app):
     assert "secure" in login(c).headers["set-cookie"].lower()
 
 
+def test_cookie_is_not_secure_over_plain_http(client):
+    assert "secure" not in login(client).headers["set-cookie"].lower()
+
+
+def test_cookie_is_secure_behind_https_proxy(app):
+    """Cloudflare tunnel / reverse proxy: TLS ends there and X-Forwarded-Proto says so."""
+    c = TestClient(app, base_url=BASE, follow_redirects=False)
+    headers = {"Origin": "https://youtube.example", "Host": "youtube.example", "X-Forwarded-Proto": "https"}
+    r = c.post("/login", data={"username": "admin", "password": "s3cret-pass"}, headers=headers)
+    assert r.status_code == 303
+    assert "secure" in r.headers["set-cookie"].lower()
+    # the same app instance still serves plain http without the flag, on the very next request
+    plain = TestClient(app, base_url=BASE, follow_redirects=False)
+    assert "secure" not in login(plain).headers["set-cookie"].lower()
+
+
+def test_cookie_is_secure_on_direct_https(app):
+    c = TestClient(app, base_url="https://testserver", follow_redirects=False)
+    r = c.post("/login", data={"username": "admin", "password": "s3cret-pass"}, headers={"Origin": "https://testserver"})
+    assert "secure" in r.headers["set-cookie"].lower()
+
+
 def test_login_bad_password(client):
     r = login(client, password="wrong")
     assert r.status_code == 401

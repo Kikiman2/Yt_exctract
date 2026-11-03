@@ -47,8 +47,27 @@ unmounted share shows up: the pipeline pauses and the health page says so. After
 the mount, `docker compose restart yt-extract` (bind mounts can go stale when a share
 reconnects).
 
-If the dashboard is behind HTTPS, set `COOKIE_SECURE=true`, and list the proxy's address in
-`TRUSTED_PROXIES` so the login rate limit sees real client IPs.
+## HTTPS (free certificate)
+
+The app speaks plain HTTP on port 2000 and lets a proxy handle TLS. The same instance can be
+used at `http://<lan-ip>:2000` at home and over HTTPS from outside: the session cookie gets the
+`Secure` flag automatically on requests that arrive over HTTPS (directly, or through a proxy
+that sends `X-Forwarded-Proto: https`), and not on plain HTTP. `COOKIE_SECURE=true` forces it
+always, which also stops plain-HTTP logins.
+
+Free options, no certificate to manage yourself:
+
+- **Cloudflare Tunnel** (no open router ports; Cloudflare issues and renews the certificate).
+  In Zero Trust -> Networks -> Tunnels -> your tunnel -> Public Hostname add your hostname with
+  service `HTTP` -> `<lan-ip>:2000`. The domain's DNS must be on Cloudflare. Optionally put a
+  Cloudflare Access policy (free for small teams) in front of the hostname.
+- **Nginx Proxy Manager / any reverse proxy** with a Let's Encrypt certificate (needs a domain
+  and port 80/443 forwarded, or a DNS challenge).
+
+Either way set `TRUSTED_PROXIES` (for example `172.16.0.0/12`, the Docker bridge ranges) so the
+login rate limit sees each visitor's real address. Without it every visitor coming through the
+proxy shares one address, and five failed logins from anyone would lock everybody out of the
+public name for a minute. The public login page is the only protection: use long passwords.
 
 ## First run
 

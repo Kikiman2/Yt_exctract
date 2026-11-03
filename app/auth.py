@@ -1,7 +1,7 @@
 """Accounts (admin / user), login, session cookie, login rate limit and CSRF (Origin) check.
 
 - Sessions: Starlette's signed-cookie SessionMiddleware (HttpOnly, SameSite=Lax,
-  Secure when COOKIE_SECURE, 30 days).
+  Secure when the request came in over HTTPS, 30 days; see AutoSecureSessionMiddleware).
 - Users live in the database (scrypt password hashes). The first start turns the
   ADMIN_USERNAME / ADMIN_PASSWORD environment values into admin account #1; after
   that the database owns the password and the environment values are ignored.
@@ -27,10 +27,12 @@ import re
 import secrets
 import time
 from collections import deque
+from contextvars import ContextVar
 from urllib.parse import quote, urlsplit
 
 from fastapi import Depends, Request
 from fastapi.responses import JSONResponse, RedirectResponse
+from starlette.middleware.sessions import SessionMiddleware
 
 from . import config, db
 
@@ -69,13 +71,50 @@ def session_secret() -> str:
     return config.SESSION_SECRET or secrets.token_urlsafe(32)
 
 
+_request_is_https: ContextVar[bool] = ContextVar("request_is_https", default=False)
+
+
+class HttpsAwareMiddleware:
+    """Notes whether this request reached the app over HTTPS: directly, or through a TLS
+    terminating proxy / Cloudflare tunnel that sends X-Forwarded-Proto: https. Lets the
+    same instance serve plain http://LAN-ip:port and https://public-name with the right
+    cookie flag on each. Faking the header only changes the Secure flag of the faker's
+    own cookie."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] in ("http", "websocket"):
+            headers = dict(scope.get("headers") or [])
+            forwarded = headers.get(b"x-forwarded-proto", b"").split(b",")[0].strip().lower()
+            _request_is_https.set(scope.get("scheme") in ("https", "wss") or forwarded == b"https")
+        await self.app(scope, receive, send)
+
+
+class AutoSecureSessionMiddleware(SessionMiddleware):
+    """SessionMiddleware whose cookie gets `Secure` on HTTPS requests (always when
+    COOKIE_SECURE=true). Starlette reads `security_flags` when it sets the cookie, so
+    deciding per request is just a property."""
+
+    @property
+    def security_flags(self) -> str:
+        if config.COOKIE_SECURE or _request_is_https.get():
+            return self._flags if "secure" in self._flags else self._flags + "; secure"
+        return self._flags
+
+    @security_flags.setter
+    def security_flags(self, value: str) -> None:
+        self._flags = value
+
+
 def session_middleware_kwargs() -> dict:
     return {
         "secret_key": session_secret(),
         "session_cookie": SESSION_COOKIE,
         "max_age": SESSION_MAX_AGE,
         "same_site": "lax",
-        "https_only": config.COOKIE_SECURE,
+        "https_only": False,  # decided per request by AutoSecureSessionMiddleware
     }
 
 
