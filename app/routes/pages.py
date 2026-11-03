@@ -14,13 +14,16 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 public_router = APIRouter()
 router = APIRouter(dependencies=[Depends(auth.require_login)])
+admin_router = APIRouter(dependencies=[Depends(auth.require_admin)])
 
 
 def render(request: Request, name: str, active: str, **ctx):
+    user = getattr(request.state, "user", None)
     return templates.TemplateResponse(
         request,
         name,
-        {"active": active, "user": auth.current_user(request), "dev_fake": config.DEV_FAKE, **ctx},
+        {"active": active, "user": user, "is_admin": bool(user and user["role"] == "admin"),
+         "dev_fake": config.DEV_FAKE, **ctx},
     )
 
 
@@ -30,7 +33,7 @@ def render(request: Request, name: str, active: str, **ctx):
 @public_router.get("/login")
 async def login_page(request: Request, next: str | None = None):
     target = auth.safe_next(next)
-    if auth.current_user(request):
+    if await auth.load_user(request):
         return RedirectResponse(target, status_code=303)
     return render(request, "login.html", "login", next=target, error=None)
 
@@ -51,13 +54,14 @@ async def login_submit(
         resp.status_code = 429
         resp.headers["Retry-After"] = str(wait)
         return resp
-    if not auth.check_credentials(username, password):
+    user = await auth.authenticate(username, password)
+    if user is None:
         auth.rate_limiter.fail(ip)
         resp = render(request, "login.html", "login", next=target, error="Wrong username or password.")
         resp.status_code = 401
         return resp
     auth.rate_limiter.reset(ip)
-    auth.login_session(request, username)
+    auth.login_session(request, user)
     return RedirectResponse(target, status_code=303)
 
 
@@ -71,20 +75,32 @@ async def logout(request: Request):
 
 
 @router.get("/")
-async def dashboard(request: Request):
+async def dashboard(request: Request, user: dict = Depends(auth.require_login)):
+    if user["role"] != "admin":
+        return render(request, "my_downloads.html", "dashboard")
     return render(request, "dashboard.html", "dashboard")
 
 
-@router.get("/sources")
+@router.get("/account")
+async def account_page(request: Request):
+    return render(request, "account.html", "account")
+
+
+@admin_router.get("/sources")
 async def sources_page(request: Request):
     return render(request, "sources.html", "sources")
 
 
-@router.get("/settings")
+@admin_router.get("/settings")
 async def settings_page(request: Request):
     return render(request, "settings.html", "settings")
 
 
-@router.get("/health")
+@admin_router.get("/health")
 async def health_page(request: Request):
     return render(request, "health.html", "health")
+
+
+@admin_router.get("/users")
+async def users_page(request: Request):
+    return render(request, "users.html", "users")

@@ -218,7 +218,7 @@ def test_check_config_refuses_missing_secrets(monkeypatch):
     monkeypatch.setattr(config, "DEV_FAKE", True)
     monkeypatch.setattr(config, "ADMIN_PASSWORD", "")
     auth.check_config()  # dev mode is allowed, with admin/admin
-    assert auth.check_credentials("admin", "admin")
+    assert auth.credentials() == ("admin", "admin")
 
 
 def test_startup_refused_without_secrets(monkeypatch, app):
@@ -228,7 +228,8 @@ def test_startup_refused_without_secrets(monkeypatch, app):
             pass
 
 
-def test_empty_password_never_matches(monkeypatch):
+async def test_empty_password_never_matches(monkeypatch, database):
     monkeypatch.setattr(config, "DEV_FAKE", False)
     monkeypatch.setattr(config, "ADMIN_PASSWORD", "")
-    assert not auth.check_credentials("admin", "")
+    assert await auth.authenticate("admin", "") is None
+    assert await database.count_users() == 0  # nothing to bootstrap without a password

@@ -56,6 +56,23 @@ def classify_input(value: str) -> tuple[str, str]:
     return "handle", f"https://www.youtube.com/@{name}"
 
 
+def playlist_url(value: str) -> str | None:
+    """Canonical playlist URL when `value` is a pure playlist link (no v= video), else None.
+    Raises ValueError for playlists that can't be listed (auto-generated mixes)."""
+    raw = (value or "").strip()
+    if not re.match(r"^(https?://|(www\.|m\.)?youtube\.com/)", raw, re.IGNORECASE):
+        return None
+    parsed = urlparse(raw if "//" in raw else "https://" + raw)
+    if not _is_youtube(parsed.netloc) or parsed.path.rstrip("/") != "/playlist":
+        return None
+    list_id = (parse_qs(parsed.query).get("list") or [""])[0]
+    if not list_id:
+        raise ValueError("Playlist URL has no list= parameter")
+    if list_id.startswith(_UNSUPPORTED_LIST_PREFIXES):
+        raise ValueError("Auto-generated mix playlists can't be downloaded")
+    return f"https://www.youtube.com/playlist?list={list_id}"
+
+
 def extract_video_id(url: str) -> str | None:
     raw = (url or "").strip()
     if not raw:

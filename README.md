@@ -61,6 +61,29 @@ If the dashboard is behind HTTPS, set `COOKIE_SECURE=true`, and list the proxy's
 Changing `MEDIA_ROOT` itself means editing `.env` and recreating the container, since
 Docker can't remount a new host path into a running one.
 
+## Users
+
+There are two roles. Accounts live in the database (scrypt-hashed passwords).
+
+| | Admin | User |
+|---|---|---|
+| Paste a video or playlist link and download it | yes | yes |
+| See the videos | all of them | only the ones they requested |
+| Subscribe to channels/playlists, Settings, Health, cookies, queue control | yes | no (403) |
+| Add, disable, delete users, reset passwords, change roles | yes | no |
+| Change their own password (Account page) | yes | yes |
+
+The first start turns `ADMIN_USERNAME` / `ADMIN_PASSWORD` from `.env` into admin account #1; after
+that the database owns that password and later `.env` edits are ignored (use Account). Admins add
+the other accounts on the **Users** page with a temporary password.
+
+Everything is stored in the one shared library (`<channel>/...`) and downloaded only once. If a
+user asks for a video that is already downloaded, it just appears in their list. When a user
+removes a video, only their entry goes, and the file is deleted only if nobody else holds it (no
+other requester, not from a subscription). Retention and every other setting stay global and
+admin-only. The last enabled admin can't be removed, and nobody can disable, demote or delete
+their own account.
+
 ## Sources and playlists
 
 A source is a channel (`https://www.youtube.com/@name`, `/channel/UC...`, or just `name`) or

@@ -29,6 +29,21 @@ Each entry: what, why, how to revert. Newest last.
 13. **`DEV_FAKE=1` needs `tests/` importable**; `.dockerignore` excludes it, so fake mode works from a repo checkout,
     not inside the production image. Intentional.
 
+## User accounts (added later)
+
+14. **Two roles, accounts in SQLite.** `users` (scrypt hash via `hashlib`, no new dependency) and `video_requests`
+    (user_id, video_id). Admin #1 is created from `ADMIN_USERNAME`/`ADMIN_PASSWORD` on first start (or first login);
+    after that the database owns the password and the env values are ignored.
+15. **Users only download by link.** Everything else (sources, settings, health, cookies, queue control, users) is
+    `admin_router` -> 403. Hiding buttons is not the control; the server checks the role on every request, loading the
+    user from the DB each time, so disabling or deleting an account takes effect at once.
+16. **One shared library, dedupe by video id.** A user asking for an already downloaded video is added as a holder
+    without a re-download (the admin pasting the same link still means "download again").
+17. **A user's delete only drops their entry** unless they are the sole holder and the video isn't from a
+    subscription. Videos nobody holds (older manual downloads, removed subscriptions) are given to the admin before a
+    user can become their only holder.
+18. **Retention and all settings stay global.** `/api/status` for a user returns only `paused` + `pause_reasons`.
+
 ## Open items / not verified (be honest)
 
 - **Docker image was never built** (no Docker daemon in the build sandbox). `docker compose config` validates; CI builds

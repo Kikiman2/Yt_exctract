@@ -11,14 +11,14 @@
 </div>
 
 <section class="panel" aria-labelledby="add-h">
-  <h2 id="add-h">Add video by link</h2>
+  <h2 id="add-h">Add video or playlist by link</h2>
   <form id="add-form" class="inline-form">
     <label class="grow"><span class="sr-only">YouTube video link</span>
-      <input type="url" id="add-url" class="grow" placeholder="https://www.youtube.com/watch?v=..." required>
+      <input type="url" id="add-url" class="grow" placeholder="https://www.youtube.com/watch?v=... or a playlist link" required>
     </label>
     <button type="submit" class="btn-primary">Download</button>
   </form>
-  <p class="help">Manual links ignore the shorts/live filters and never auto-delete.</p>
+  <p class="help">A playlist link queues every video once, each into its own channel folder. Manual links ignore the shorts/live filters and never auto-delete.</p>
 </section>
 
 <section class="counters" id="counters" aria-label="Queue counts"></section>

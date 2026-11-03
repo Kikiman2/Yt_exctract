@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Account{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Account</h1>
+</div>
+
+<section class="panel" aria-labelledby="who-h">
+  <h2 id="who-h">Signed in</h2>
+  <p>You are <strong>{{ user.username }}</strong> ({{ user.role }}).</p>
+</section>
+
+<section class="panel" aria-labelledby="pw-h">
+  <h2 id="pw-h">Change password</h2>
+  <form id="password-form" class="stacked-form">
+    <label>Current password
+      <input type="password" name="current_password" autocomplete="current-password" required>
+    </label>
+    <label>New password
+      <input type="password" name="new_password" autocomplete="new-password" minlength="8" required>
+    </label>
+    <label>New password again
+      <input type="password" name="repeat" autocomplete="new-password" minlength="8" required>
+    </label>
+    <p class="help">At least 8 characters.</p>
+    <p class="alert alert-error" id="pw-error" role="alert" hidden></p>
+    <button type="submit" class="btn-primary">Change password</button>
+  </form>
+</section>
+{% endblock %}
+{% block scripts %}<script src="/static/account.js"></script>{% endblock %}

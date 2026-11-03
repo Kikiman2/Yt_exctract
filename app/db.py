@@ -40,6 +40,23 @@ CREATE TABLE IF NOT EXISTS videos (
     FOREIGN KEY (channel_id) REFERENCES channels(channel_id)
 );
 
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY,
+    username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'user',    -- admin|user
+    disabled INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+
+-- Who asked for which video by link. One downloaded file can have several holders.
+CREATE TABLE IF NOT EXISTS video_requests (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    video_id TEXT NOT NULL,
+    requested_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, video_id)
+);
+
 CREATE TABLE IF NOT EXISTS events (
     id INTEGER PRIMARY KEY,
     ts TEXT NOT NULL,
@@ -75,6 +92,7 @@ INDEXES = """
 CREATE INDEX IF NOT EXISTS idx_videos_status ON videos(status);
 CREATE INDEX IF NOT EXISTS idx_videos_channel ON videos(channel_id);
 CREATE INDEX IF NOT EXISTS idx_events_ts ON events(id);
+CREATE INDEX IF NOT EXISTS idx_requests_video ON video_requests(video_id);
 """
 
 # Columns of `channels` a caller may change through update_subscription().
@@ -408,3 +426,135 @@ async def list_downloaded() -> list[dict]:
 
 async def list_videos_by_status(status: str) -> list[dict]:
     return await _all(_VIDEO_SELECT + " WHERE v.status = ?", (status,))
+
+
+# --- users ------------------------------------------------------------------------
+
+USER_COLUMNS = "id, username, role, disabled, created_at"
+
+
+async def count_users() -> int:
+    return (await _one("SELECT COUNT(*) AS n FROM users"))["n"]
+
+
+async def create_user(username: str, password_hash: str, role: str = "user") -> int | None:
+    """New user id, or None if the username is taken (case-insensitive)."""
+    conn = get_conn()
+    cur = await conn.execute(
+        "INSERT OR IGNORE INTO users (username, password_hash, role, created_at) VALUES (?, ?, ?, ?)",
+        (username, password_hash, role, now()),
+    )
+    await conn.commit()
+    return cur.lastrowid if cur.rowcount > 0 else None
+
+
+async def get_user(user_id: int) -> dict | None:
+    return await _one(f"SELECT {USER_COLUMNS} FROM users WHERE id = ?", (user_id,))
+
+
+async def get_user_by_name(username: str) -> dict | None:
+    """Includes `password_hash` (the only lookup that does)."""
+    return await _one("SELECT * FROM users WHERE username = ?", (username,))
+
+
+async def get_password_hash(user_id: int) -> str | None:
+    row = await _one("SELECT password_hash FROM users WHERE id = ?", (user_id,))
+    return row["password_hash"] if row else None
+
+
+async def list_users() -> list[dict]:
+    return await _all(
+        f"SELECT {USER_COLUMNS}, "
+        "(SELECT COUNT(*) FROM video_requests r WHERE r.user_id = users.id) AS request_count "
+        "FROM users ORDER BY id"
+    )
+
+
+async def count_active_admins(excluding: int | None = None) -> int:
+    row = await _one(
+        "SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND disabled = 0 AND id != ?",
+        (excluding if excluding is not None else -1,),
+    )
+    return row["n"]
+
+
+async def first_admin_id() -> int | None:
+    row = await _one("SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1")
+    return row["id"] if row else None
+
+
+async def update_user(user_id: int, fields: dict) -> None:
+    allowed = {"password_hash", "role", "disabled"}
+    bad = set(fields) - allowed
+    if bad:
+        raise ValueError(f"unknown user field(s): {', '.join(sorted(bad))}")
+    if not fields:
+        return
+    conn = get_conn()
+    sets = ", ".join(f"{k} = ?" for k in fields)
+    await conn.execute(f"UPDATE users SET {sets} WHERE id = ?", (*fields.values(), user_id))
+    await conn.commit()
+
+
+async def delete_user(user_id: int) -> None:
+    """Their requests go with them (ON DELETE CASCADE); downloaded videos stay."""
+    conn = get_conn()
+    await conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    await conn.commit()
+
+
+# --- video requests ---------------------------------------------------------------
+
+
+async def add_request(user_id: int, video_id: str) -> None:
+    conn = get_conn()
+    await conn.execute(
+        "INSERT OR IGNORE INTO video_requests (user_id, video_id, requested_at) VALUES (?, ?, ?)",
+        (user_id, video_id, now()),
+    )
+    await conn.commit()
+
+
+async def remove_request(user_id: int, video_id: str) -> None:
+    conn = get_conn()
+    await conn.execute(
+        "DELETE FROM video_requests WHERE user_id = ? AND video_id = ?", (user_id, video_id))
+    await conn.commit()
+
+
+async def has_request(user_id: int, video_id: str) -> bool:
+    row = await _one(
+        "SELECT 1 AS x FROM video_requests WHERE user_id = ? AND video_id = ?", (user_id, video_id))
+    return row is not None
+
+
+async def count_requests(video_id: str) -> int:
+    return (await _one(
+        "SELECT COUNT(*) AS n FROM video_requests WHERE video_id = ?", (video_id,)))["n"]
+
+
+async def backfill_unowned_manual_videos(admin_id: int) -> int:
+    """Videos with no subscription and no holder (manual downloads from before users
+    existed) belong to the admin, so a user's later delete can't remove their file."""
+    conn = get_conn()
+    cur = await conn.execute(
+        "INSERT OR IGNORE INTO video_requests (user_id, video_id, requested_at) "
+        "SELECT ?, v.video_id, v.added_at FROM videos v WHERE v.channel_id IS NULL "
+        "AND NOT EXISTS (SELECT 1 FROM video_requests r WHERE r.video_id = v.video_id)",
+        (admin_id,),
+    )
+    await conn.commit()
+    return cur.rowcount
+
+
+async def list_videos_for_user(
+    user_id: int, limit: int = 200, offset: int = 0, status: str | None = None,
+) -> list[dict]:
+    where = ["v.video_id IN (SELECT video_id FROM video_requests WHERE user_id = ?)"]
+    params: list = [user_id]
+    if status:
+        where.append("v.status = ?")
+        params.append(status)
+    sql = _VIDEO_SELECT + " WHERE " + " AND ".join(where)
+    sql += " ORDER BY v.added_at DESC, v.video_id LIMIT ? OFFSET ?"
+    return await _all(sql, (*params, limit, offset))

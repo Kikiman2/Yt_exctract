@@ -1,10 +1,15 @@
-"""Single-user login, session cookie, login rate limit and CSRF (Origin) check.
+"""Accounts (admin / user), login, session cookie, login rate limit and CSRF (Origin) check.
 
 - Sessions: Starlette's signed-cookie SessionMiddleware (HttpOnly, SameSite=Lax,
   Secure when COOKIE_SECURE, 30 days).
+- Users live in the database (scrypt password hashes). The first start turns the
+  ADMIN_USERNAME / ADMIN_PASSWORD environment values into admin account #1; after
+  that the database owns the password and the environment values are ignored.
 - `require_login` is a router dependency on every page/API route except /login,
-  /static and /healthz. API requests without a session get 401 JSON; pages are
-  redirected to /login?next=<local path>.
+  /static and /healthz; it loads the user from the database on each request, so a
+  disabled or deleted account loses access at once. `require_admin` additionally
+  needs role=admin (403 JSON for the API, redirect to / for pages). API requests
+  without a session get 401 JSON; pages are redirected to /login?next=<local path>.
 - `csrf_middleware` rejects state-changing requests whose Origin (or Referer)
   doesn't match the Host / X-Forwarded-Host. The app sits behind
   nginx-proxy-manager, so this is the CSRF protection (plus SameSite=Lax).
@@ -12,18 +17,22 @@
 
 from __future__ import annotations
 
+import asyncio
+import base64
+import hashlib
 import hmac
 import ipaddress
 import logging
+import re
 import secrets
 import time
 from collections import deque
 from urllib.parse import quote, urlsplit
 
-from fastapi import Request
+from fastapi import Depends, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 
-from . import config
+from . import config, db
 
 log = logging.getLogger(__name__)
 
@@ -78,14 +87,84 @@ def credentials() -> tuple[str, str]:
     return user, password
 
 
-def check_credentials(username: str, password: str) -> bool:
-    user, expected = credentials()
-    if not expected:
+# --- passwords ----------------------------------------------------------------
+
+USERNAME_RE = re.compile(r"^[A-Za-z0-9._-]{3,32}$")
+MIN_PASSWORD_LENGTH = 8
+MAX_PASSWORD_LENGTH = 256
+ROLES = ("admin", "user")
+
+_SCRYPT_N, _SCRYPT_R, _SCRYPT_P = 2**14, 8, 1
+
+
+def hash_password(password: str) -> str:
+    salt = secrets.token_bytes(16)
+    digest = hashlib.scrypt(password.encode(), salt=salt, n=_SCRYPT_N, r=_SCRYPT_R, p=_SCRYPT_P)
+    b64 = lambda raw: base64.b64encode(raw).decode()  # noqa: E731
+    return f"scrypt${_SCRYPT_N}${_SCRYPT_R}${_SCRYPT_P}${b64(salt)}${b64(digest)}"
+
+
+def verify_password(password: str, stored: str) -> bool:
+    try:
+        scheme, n, r, p, salt, digest = stored.split("$")
+        if scheme != "scrypt":
+            return False
+        expected = base64.b64decode(digest)
+        actual = hashlib.scrypt(
+            password.encode(), salt=base64.b64decode(salt), n=int(n), r=int(r), p=int(p),
+            dklen=len(expected), maxmem=128 * 1024 * 1024,
+        )
+    except (ValueError, TypeError):
         return False
-    # Evaluate both comparisons so timing doesn't reveal which one failed.
-    ok_user = hmac.compare_digest(username.encode(), user.encode())
-    ok_pass = hmac.compare_digest(password.encode(), expected.encode())
-    return ok_user and ok_pass
+    return hmac.compare_digest(actual, expected)
+
+
+def check_password_rules(password: str) -> None:
+    if len(password) < MIN_PASSWORD_LENGTH:
+        raise ValueError(f"Password must be at least {MIN_PASSWORD_LENGTH} characters")
+    if len(password) > MAX_PASSWORD_LENGTH:
+        raise ValueError(f"Password must be at most {MAX_PASSWORD_LENGTH} characters")
+
+
+_dummy_hash: str | None = None
+
+
+async def bootstrap_admin() -> None:
+    """Fresh database + ADMIN_PASSWORD set: create admin #1 from the environment.
+    Then (every start, idempotent) give the admin the manual downloads that predate
+    accounts. Safe to call repeatedly and from several requests at once."""
+    if await db.count_users() == 0:
+        name, password = credentials()
+        if not password:
+            return
+        password_hash = await asyncio.to_thread(hash_password, password)
+        if await db.create_user(name, password_hash, "admin") is not None:
+            await db.add_event("info", "users", f"Created admin account '{name}' from the environment")
+    admin_id = await db.first_admin_id()
+    if admin_id is not None:
+        await db.backfill_unowned_manual_videos(admin_id)
+
+
+async def authenticate(username: str, password: str) -> dict | None:
+    """The user (without hash) when the credentials are right and the account is enabled.
+    A hash is always computed, so timing doesn't reveal whether the username exists."""
+    global _dummy_hash
+    await bootstrap_admin_if_empty()
+    row = await db.get_user_by_name(username.strip()) if username else None
+    if row is None:
+        if _dummy_hash is None:
+            _dummy_hash = await asyncio.to_thread(hash_password, "not-a-real-password")
+        await asyncio.to_thread(verify_password, password, _dummy_hash)
+        return None
+    ok = await asyncio.to_thread(verify_password, password, row["password_hash"])
+    if not ok or row["disabled"] or not password:
+        return None
+    return {k: v for k, v in row.items() if k != "password_hash"}
+
+
+async def bootstrap_admin_if_empty() -> None:
+    if await db.count_users() == 0:
+        await bootstrap_admin()
 
 
 # --- client ip / rate limit ---------------------------------------------------
@@ -172,9 +251,10 @@ rate_limiter = LoginRateLimiter()
 # --- sessions -----------------------------------------------------------------
 
 
-def login_session(request: Request, username: str) -> None:
+def login_session(request: Request, user: dict) -> None:
     request.session.clear()
-    request.session["user"] = username
+    request.session["uid"] = user["id"]
+    request.session["user"] = user["username"]
     request.session["since"] = int(time.time())
 
 
@@ -182,19 +262,36 @@ def logout_session(request: Request) -> None:
     request.session.clear()
 
 
-def current_user(request: Request) -> str | None:
-    user = request.session.get("user") if "session" in request.scope else None
-    return user if isinstance(user, str) and user else None
+async def load_user(request: Request) -> dict | None:
+    """The signed-in account from the database (None if logged out, disabled or deleted)."""
+    if "session" not in request.scope:
+        return None
+    uid = request.session.get("uid")
+    if not isinstance(uid, int):
+        return None
+    user = await db.get_user(uid)
+    return user if user and not user["disabled"] else None
 
 
 class NotAuthenticated(Exception):
     pass
 
 
-async def require_login(request: Request) -> str:
-    user = current_user(request)
+class Forbidden(Exception):
+    pass
+
+
+async def require_login(request: Request) -> dict:
+    user = await load_user(request)
     if user is None:
         raise NotAuthenticated()
+    request.state.user = user
+    return user
+
+
+async def require_admin(user: dict = Depends(require_login)) -> dict:
+    if user["role"] != "admin":
+        raise Forbidden()
     return user
 
 
@@ -220,6 +317,13 @@ async def not_authenticated_handler(request: Request, exc: NotAuthenticated):
         return JSONResponse({"detail": "Not logged in"}, status_code=401)
     target = path + (f"?{request.url.query}" if request.url.query else "")
     return RedirectResponse(f"/login?next={quote(safe_next(target), safe='')}", status_code=303)
+
+
+async def forbidden_handler(request: Request, exc: Forbidden):
+    path = request.url.path
+    if path.startswith("/api/") or path == "/api":
+        return JSONResponse({"detail": "Administrator access required"}, status_code=403)
+    return RedirectResponse("/", status_code=303)
 
 
 # --- CSRF ---------------------------------------------------------------------

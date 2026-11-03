@@ -153,33 +153,80 @@ async def _video_json_by_id(video_id: str) -> dict:
     return video_json(row)
 
 
-async def add_video_by_url(url: str) -> dict:
-    value = (url or "").strip()
-    if not value:
-        raise ValueError("Enter a video URL")
-    ref = await asyncio.to_thread(ctx().youtube.resolve_video, value)
+async def _queue_manual(ref, user: dict | None = None) -> None:
     existing = await db.get_video(ref.video_id)
     if existing is None:
         await db.add_video(ref.video_id, None, ref.title, force=True, channel_title=ref.channel_title)
-    elif existing["status"] != "downloading":
-        await db.requeue(ref.video_id, force=True)
+    else:
+        if user is not None and user["role"] != "admin" and existing["channel_id"] is None:
+            # A video nobody holds yet (older manual download, removed subscription) is the
+            # admin's: record that first, so this user deleting it later can't remove the file.
+            if await db.count_requests(ref.video_id) == 0:
+                admin_id = await db.first_admin_id()
+                if admin_id is not None:
+                    await db.add_request(admin_id, ref.video_id)
+        # A user asking for a file that is already in the library just gets it in their
+        # list; only the admin's paste of a downloaded link means "download it again".
+        already_there = _is_restricted(user) and existing["status"] == "downloaded"
+        if existing["status"] != "downloading" and not already_there:
+            await db.requeue(ref.video_id, force=True)
+    if user is not None:
+        await db.add_request(user["id"], ref.video_id)
+
+
+async def add_playlist_by_url(url: str, user: dict | None = None) -> dict:
+    """One-time import: queue every video like a manual link. Each lands in its own
+    uploader's channel folder (the playlist itself is not tracked)."""
+    playlist = urls.playlist_url(url)
+    title, refs = await asyncio.to_thread(ctx().youtube.list_playlist, playlist)
+    if not refs:
+        raise ValueError("That playlist has no downloadable videos")
+    for ref in refs:
+        await _queue_manual(ref, user)
+    await db.add_event("info", "manual", f"Queued {len(refs)} video(s) from playlist {title}")
+    return {"playlist": title, "queued": len(refs)}
+
+
+async def add_video_by_url(url: str, user: dict | None = None) -> dict:
+    value = (url or "").strip()
+    if not value:
+        raise ValueError("Enter a video URL")
+    if urls.playlist_url(value):
+        return await add_playlist_by_url(value, user)
+    ref = await asyncio.to_thread(ctx().youtube.resolve_video, value)
+    await _queue_manual(ref, user)
     await db.add_event("info", "manual", f"Queued {ref.title}", ref.video_id)
     return await _video_json_by_id(ref.video_id)
 
 
 async def list_videos(status: str | None = None, source_id: str | None = None,
-                      limit: int = 200, offset: int = 0) -> list[dict]:
+                      limit: int = 200, offset: int = 0, user: dict | None = None) -> list[dict]:
+    """Admins (and user=None) see every video; other users only the ones they requested."""
     if status and status not in VIDEO_STATUSES:
         raise ValueError(f"unknown status: {status}")
-    rows = await db.list_videos(limit=limit, offset=offset, status=status or None,
-                                subscription_id=source_id or None)
+    if user is not None and user["role"] != "admin":
+        rows = await db.list_videos_for_user(user["id"], limit=limit, offset=offset,
+                                             status=status or None)
+    else:
+        rows = await db.list_videos(limit=limit, offset=offset, status=status or None,
+                                    subscription_id=source_id or None)
     return [video_json(r) for r in rows]
 
 
-async def retry_video(video_id: str, force: bool = False) -> dict:
+def _is_restricted(user: dict | None) -> bool:
+    return user is not None and user["role"] != "admin"
+
+
+async def _row_for(video_id: str, user: dict | None) -> dict:
+    """The video row; for a non-admin user, 404 unless they requested it."""
     row = await db.get_video(video_id)
-    if row is None:
+    if row is None or (_is_restricted(user) and not await db.has_request(user["id"], video_id)):
         raise KeyError(video_id)
+    return row
+
+
+async def retry_video(video_id: str, force: bool = False, user: dict | None = None) -> dict:
+    row = await _row_for(video_id, user)
     if row["status"] == "downloading":
         raise ValueError("This video is downloading right now")
     await db.requeue(video_id, force=force)
@@ -187,12 +234,17 @@ async def retry_video(video_id: str, force: bool = False) -> dict:
     return await _video_json_by_id(video_id)
 
 
-async def delete_video(video_id: str) -> dict:
-    row = await db.get_video(video_id)
-    if row is None:
-        raise KeyError(video_id)
+async def delete_video(video_id: str, user: dict | None = None) -> dict:
+    """Admin: deletes the file. Other user: drops the video from their own list, and
+    deletes the file only when nobody else holds it (no other requester, no subscription)."""
+    row = await _row_for(video_id, user)
     if row["status"] == "downloading":
         raise ValueError("This video is downloading right now")
+    if _is_restricted(user):
+        await db.remove_request(user["id"], video_id)
+        if row["channel_id"] is not None or await db.count_requests(video_id) > 0:
+            await db.add_event("info", "removed", f"Removed from {user['username']}'s list", video_id)
+            return video_json(row)
     c = ctx()
     if row["file_path"]:
         await asyncio.to_thread(c.writer.delete, row["file_path"])  # LibraryOffline -> 503

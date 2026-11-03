@@ -34,6 +34,11 @@ class YouTubePort(Protocol):
         """watch / youtu.be / shorts URL -> VideoRef (no download)."""
         ...
 
+    def list_playlist(self, url: str) -> tuple[str, list[VideoRef]]:
+        """Playlist URL -> (title, every available video). Unavailable entries (private,
+        deleted) are left out; channel fields may be None when yt-dlp doesn't know them yet."""
+        ...
+
     def fetch_feed(self, source: SourceRef) -> list[FeedEntry]:
         """Newest uploads, newest first (about 15). Channels and playlists both use
         the public RSS feed, so no yt-dlp call (and no bot check) is involved."""

@@ -37,6 +37,7 @@ class FakeYouTube:
     def __init__(self):
         self.sources: dict[str, SourceRef] = {}
         self.videos: dict[str, VideoRef] = {}
+        self.playlists: dict[str, tuple[str, list[VideoRef]]] = {}
         self.feeds: dict[str, list[FeedEntry]] = {}
         self.fail: dict[str, YouTubeError] = {}
         self.shorts: set[str] = set()
@@ -89,6 +90,12 @@ class FakeYouTube:
             return self.videos[url]
         except KeyError:
             raise YouTubeError(f"Could not resolve a video from '{url}'") from None
+
+    def list_playlist(self, url: str):
+        try:
+            return self.playlists[url]
+        except KeyError:
+            raise YouTubeError(f"Could not resolve a playlist from '{url}'") from None
 
     def fetch_feed(self, source: SourceRef) -> list[FeedEntry]:
         if source.source_id in self.feed_errors:

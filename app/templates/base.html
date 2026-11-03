@@ -9,17 +9,23 @@
   <link rel="icon" href="/static/logo.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/style.css">
 </head>
-<body class="page-{{ active }}">
+<body class="page-{{ active }}"{% if user %} data-role="{{ user.role }}"{% endif %}>
   <a class="skip-link" href="#main">Skip to content</a>
   <header class="topbar">
     <a class="brand" href="/"><img src="/static/logo.svg" alt="" width="30" height="30"><span>yt<b>_extract</b></span></a>
     {% if active != "login" %}
     <nav aria-label="Main">
-      {% for href, key, label in [("/", "dashboard", "Dashboard"), ("/sources", "sources", "Sources"), ("/settings", "settings", "Settings"), ("/health", "health", "Health")] %}
+      {% if is_admin %}
+      {% set items = [("/", "dashboard", "Dashboard"), ("/sources", "sources", "Sources"), ("/settings", "settings", "Settings"), ("/health", "health", "Health"), ("/users", "users", "Users"), ("/account", "account", "Account")] %}
+      {% else %}
+      {% set items = [("/", "dashboard", "My downloads"), ("/account", "account", "Account")] %}
+      {% endif %}
+      {% for href, key, label in items %}
       <a href="{{ href }}"{% if active == key %} aria-current="page"{% endif %}>{{ label }}</a>
       {% endfor %}
     </nav>
     <form method="post" action="/logout" class="logout">
+      {% if user %}<span class="who muted small">{{ user.username }}</span>{% endif %}
       <button type="submit" class="btn-ghost">Log out</button>
     </form>
     {% endif %}

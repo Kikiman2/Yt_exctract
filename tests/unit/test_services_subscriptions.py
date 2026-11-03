@@ -261,3 +261,28 @@ async def test_add_source_garbage_input_is_a_value_error_not_a_youtube_error(ser
         with pytest.raises(ValueError):
             await subscriptions.add_source(bad)
     assert not fake_youtube.sources
+
+
+async def test_add_playlist_queues_all_with_uploader_channel(services_ctx, fake_youtube):
+    a = fake_youtube.add_channel("UC1", "Chan One")
+    b = fake_youtube.add_channel("UC2", "Chan Two")
+    va = fake_youtube.add_video("plist000001", "A", a)
+    vb = fake_youtube.add_video("plist000002", "B", b)
+    url = "https://www.youtube.com/playlist?list=PLabc"
+    fake_youtube.playlists[url] = ("My list", [va, vb])
+    # a pasted playlist link takes the same box as a video link
+    res = await subscriptions.add_video_by_url(url + "&si=xyz")
+    assert res == {"playlist": "My list", "queued": 2}
+    r1, r2 = await db.get_video("plist000001"), await db.get_video("plist000002")
+    assert (r1["channel_name"], r2["channel_name"]) == ("Chan One", "Chan Two")
+    assert r1["force_download"] == 1 and r1["channel_id"] is None
+    assert await db.list_subscriptions() == []
+
+
+async def test_add_playlist_rejects_mix_and_empty(services_ctx, fake_youtube):
+    with pytest.raises(ValueError):
+        await subscriptions.add_video_by_url("https://www.youtube.com/playlist?list=RDabc")
+    url = "https://www.youtube.com/playlist?list=PLempty"
+    fake_youtube.playlists[url] = ("Empty", [])
+    with pytest.raises(ValueError):
+        await subscriptions.add_video_by_url(url)

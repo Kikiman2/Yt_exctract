@@ -1,14 +1,17 @@
 "use strict";
 // Dashboard: paste-a-link form, queue counters and the video table.
-// Refreshes every 3 s, only while the tab is visible (YT.poll).
+// Also serves the plain user page ("My downloads"), which has no counters or admin
+// buttons. Refreshes every 3 s, only while the tab is visible (YT.poll).
 (() => {
   const { h, $, api, get, post, toast, busy, relTime, fullTime, bytes, duration, progressBar } = YT;
   const STATUSES = ["pending", "downloading", "downloaded", "skipped", "failed", "deleted"];
   let filter = "";
   let queue = null;
+  const isAdmin = document.body.dataset.role === "admin";
 
   function renderCounters() {
     const box = $("#counters");
+    if (!box) return;
     const counts = (queue && queue.counts) || {};
     YT.replace(
       box,
@@ -31,7 +34,7 @@
       )
     );
     const pause = $("#pause-btn");
-    pause.textContent = queue && queue.paused ? "Resume downloads" : "Pause downloads";
+    if (pause) pause.textContent = queue && queue.paused ? "Resume downloads" : "Pause downloads";
   }
 
   function statusCell(v) {
@@ -75,10 +78,11 @@
     if (v.status === "deleted") out.push(btn("Download again", "", force, "Queued again"));
     if (v.status === "downloaded") {
       out.push(
-        btn("Delete", "btn-danger", () => {
-          if (!confirm(`Delete the file for "${v.title}"?`)) return Promise.resolve();
+        btn(isAdmin ? "Delete" : "Remove", "btn-danger", () => {
+          const question = isAdmin ? `Delete the file for "${v.title}"?` : `Remove "${v.title}" from your downloads?`;
+          if (!confirm(question)) return Promise.resolve();
           return post(`/api/videos/${id}/delete`, {});
-        }, "Deleted")
+        }, isAdmin ? "Deleted" : "Removed")
       );
     }
     return out;
@@ -88,7 +92,7 @@
     const box = $("#videos-box");
     $("#video-count").textContent = `(${videos.length})`;
     if (!videos.length) {
-      YT.replace(box, h("p", { class: "muted", text: "No videos here yet. Paste a link above or add a source." }));
+      YT.replace(box, h("p", { class: "muted", text: isAdmin ? "No videos here yet. Paste a link above or add a source." : "Nothing here yet. Paste a YouTube link above to download it." }));
       return;
     }
     const rows = videos.map((v) =>
@@ -131,7 +135,7 @@
   $("#add-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const input = $("#add-url");
-    const ok = await busy(e.submitter, () => post("/api/videos", { url: input.value.trim() }), "Link added to the queue");
+    const ok = await busy(e.submitter, () => post("/api/videos", { url: input.value.trim() }), (r) => (r && r.playlist ? `Queued ${r.queued} video${r.queued === 1 ? "" : "s"} from ${r.playlist}` : "Link added to the queue"));
     if (ok) input.value = "";
     tick();
   });
@@ -139,15 +143,17 @@
     filter = e.target.value;
     tick();
   });
-  $("#pause-btn").addEventListener("click", (e) =>
-    act(e.currentTarget, () => post(queue && queue.paused ? "/api/queue/resume" : "/api/queue/pause", {}))
-  );
-  $("#refresh-btn").addEventListener("click", (e) =>
-    act(e.currentTarget, () => post("/api/refresh", {}), (r) => `${r.new} new video${r.new === 1 ? "" : "s"} queued`)
-  );
-  $("#missing-btn").addEventListener("click", (e) =>
-    act(e.currentTarget, () => post("/api/videos/check-missing", {}), (r) => `${r.requeued} missing file${r.requeued === 1 ? "" : "s"} requeued`)
-  );
+  if (isAdmin) {
+    $("#pause-btn").addEventListener("click", (e) =>
+      act(e.currentTarget, () => post(queue && queue.paused ? "/api/queue/resume" : "/api/queue/pause", {}))
+    );
+    $("#refresh-btn").addEventListener("click", (e) =>
+      act(e.currentTarget, () => post("/api/refresh", {}), (r) => `${r.new} new video${r.new === 1 ? "" : "s"} queued`)
+    );
+    $("#missing-btn").addEventListener("click", (e) =>
+      act(e.currentTarget, () => post("/api/videos/check-missing", {}), (r) => `${r.requeued} missing file${r.requeued === 1 ? "" : "s"} requeued`)
+    );
+  }
 
   YT.poll(tick, 3000);
 })();

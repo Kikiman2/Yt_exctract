@@ -26,6 +26,7 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 async def lifespan(app: FastAPI):
     auth.check_config()
     await db.init_db()
+    await auth.bootstrap_admin()
     try:
         await runtime.startup()
         try:
@@ -58,11 +59,14 @@ def create_app() -> FastAPI:
 
     api.install_error_handlers(app)
     app.add_exception_handler(auth.NotAuthenticated, auth.not_authenticated_handler)
+    app.add_exception_handler(auth.Forbidden, auth.forbidden_handler)
 
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
     app.include_router(pages.public_router)
     app.include_router(pages.router)
+    app.include_router(pages.admin_router)
     app.include_router(api.router)
+    app.include_router(api.admin_router)
 
     @app.get("/healthz", include_in_schema=False)
     async def healthz():

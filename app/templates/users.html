@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Users{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Users</h1>
+</div>
+
+<section class="panel" aria-labelledby="add-h">
+  <h2 id="add-h">Add a user</h2>
+  <form id="user-form" class="inline-form wrap">
+    <label class="grow"><span class="sr-only">Username</span>
+      <input type="text" name="username" class="grow" placeholder="Username (3-32 letters, digits, . _ -)" autocomplete="off" required>
+    </label>
+    <label class="grow"><span class="sr-only">Temporary password</span>
+      <input type="text" name="password" class="grow" placeholder="Temporary password (min. 8 characters)" autocomplete="off" minlength="8" required>
+    </label>
+    <label><span class="sr-only">Role</span>
+      <select name="role">
+        <option value="user">User</option>
+        <option value="admin">Admin</option>
+      </select>
+    </label>
+    <button type="submit" class="btn-primary">Add user</button>
+  </form>
+  <p class="help">Users can paste links and manage their own downloads. Only admins can subscribe to channels, change settings or manage users. Users can change their password under Account.</p>
+</section>
+
+<section class="panel" aria-labelledby="list-h">
+  <h2 id="list-h">Accounts <span class="count" id="user-count"></span></h2>
+  <div class="table-wrap" id="users-box"><p class="muted">Loading…</p></div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="/static/users.js"></script>{% endblock %}
